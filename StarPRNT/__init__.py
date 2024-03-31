@@ -3,3 +3,4 @@
 #  file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 from .conn import StarPRNT, StarPRNTEthernet
+from .enums import Model, UTF8Font, Alignment, PrintSpeed, PrintDensity
