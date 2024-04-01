@@ -4,6 +4,7 @@
 from abc import ABC, abstractmethod
 from asyncio import StreamReader, StreamWriter
 from enum import Enum
+from io import BytesIO
 from ipaddress import IPv4Address
 import asyncio
 from struct import pack
@@ -67,15 +68,15 @@ class StarPRNT(ABC):
             else:
                 await self.write_raw(b"\xaa" * 72)
 
-    async def print_image(self, image_path: str, alignment: Alignment = Alignment.Left):
-        with Image.open(image_path) as img:
+    async def print_image(self, image: str | BytesIO, alignment: Alignment = Alignment.Center):
+        with Image.open(image) as img:
             width, height = img.size
             if width > 576:
                 img = img.resize((576, height * 576 // width), Image.LANCZOS)
                 width, height = img.size
             img = img.convert("1")
             if width % 8 != 0:
-                padded = Image.new("1", (width + 8 - width % 8, height), 1)
+                padded = Image.new("1", (width + 8 - width % 8, height), 255)
                 padded.paste(img, (0, 0))
                 img = padded
                 width, height = img.size
