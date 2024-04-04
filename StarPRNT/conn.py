@@ -1,6 +1,8 @@
 #  This Source Code Form is subject to the terms of the Mozilla Public
 #  License, v. 2.0. If a copy of the MPL was not distributed with this
 #  file, You can obtain one at https://mozilla.org/MPL/2.0/.
+import os.path
+import pathlib
 from abc import ABC, abstractmethod
 from asyncio import StreamReader, StreamWriter
 from enum import Enum
@@ -71,16 +73,86 @@ class StarPRNT(ABC):
     async def print_image(self, image: str | BytesIO, alignment: Alignment = Alignment.Center):
         with Image.open(image) as img:
             width, height = img.size
+            if img.mode == "RGBA":
+                bg = Image.new("RGBA", (width, height), (255, 255, 255, 255))
+                img = Image.alpha_composite(bg, img)
             if width > 576:
                 img = img.resize((576, height * 576 // width), Image.LANCZOS)
                 width, height = img.size
-            img = img.convert("1")
+
+            if img.mode == "RGB" or img.mode == "RGBA":
+                # convert to luma with BT.709
+                new_img = Image.new("L", img.size)
+                img_data = img.getdata()
+                new_img.putdata([round((((0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]) / 255) ** (1 / 2.2)) ** 1.5 * 255) for pixel in img_data])
+                img = new_img
+            elif img.mode not in ("1", "L"):
+                # convert to grayscale with Pillow directly
+                img = img.convert("L")
+            if img.mode == "L":
+                new_img = Image.new("1", img.size)
+                img_data = list(img.getdata())
+                img_data = [img_data[i * width:(i + 1) * width] for i in range(height)]
+                # completely non-optimized snake sierra-3
+                for y in range(height):
+                    if y % 2 == 0:
+                        for x in range(width):
+                            old_pixel = img_data[y][x]
+                            new_pixel = 0 if old_pixel < 128 else 255
+                            error = old_pixel - new_pixel
+                            new_img.putpixel((x, y), 1 if new_pixel < 128 else 0)
+                            if x + 1 < width:
+                                img_data[y][x + 1] += error * 5 / 32
+                            if x + 2 < width:
+                                img_data[y][x + 2] += error * 3 / 32
+                            if y + 1 < height:
+                                if x - 2 >= 0:
+                                    img_data[y + 1][x - 2] += error * 2 / 32
+                                if x - 1 >= 0:
+                                    img_data[y + 1][x - 1] += error * 4 / 32
+                                img_data[y + 1][x] += error * 5 / 32
+                                if x + 1 < width:
+                                    img_data[y + 1][x + 1] += error * 4 / 32
+                                if x + 2 < width:
+                                    img_data[y + 1][x + 2] += error * 2 / 32
+                                if y + 2 < height:
+                                    if x - 1 >= 0:
+                                        img_data[y + 2][x - 1] += error * 2 / 32
+                                    img_data[y + 2][x] += error * 3 / 32
+                                    if x + 1 < width:
+                                        img_data[y + 2][x + 1] += error * 2 / 32
+                    else:
+                        for x in range(width - 1, -1, -1):
+                            old_pixel = img_data[y][x]
+                            new_pixel = 0 if old_pixel < 128 else 255
+                            error = old_pixel - new_pixel
+                            new_img.putpixel((x, y), 1 if new_pixel < 128 else 0)
+                            if x - 1 >= 0:
+                                img_data[y][x - 1] += error * 5 / 32
+                            if x - 2 >= 0:
+                                img_data[y][x - 2] += error * 3 / 32
+                            if y + 1 < height:
+                                if x + 2 < width:
+                                    img_data[y + 1][x + 2] += error * 2 / 32
+                                if x + 1 < width:
+                                    img_data[y + 1][x + 1] += error * 4 / 32
+                                img_data[y + 1][x] += error * 5 / 32
+                                if x - 1 >= 0:
+                                    img_data[y + 1][x - 1] += error * 4 / 32
+                                if x - 2 >= 0:
+                                    img_data[y + 1][x - 2] += error * 2 / 32
+                                if y + 2 < height:
+                                    if x + 1 < width:
+                                        img_data[y + 2][x + 1] += error * 2 / 32
+                                    img_data[y + 2][x] += error * 3 / 32
+                                    if x - 1 >= 0:
+                                        img_data[y + 2][x - 1] += error * 2 / 32
+                img = new_img
             if width % 8 != 0:
                 padded = Image.new("1", (width + 8 - width % 8, height), 255)
                 padded.paste(img, (0, 0))
                 img = padded
                 width, height = img.size
-            img = ImageOps.invert(img)
             if alignment == Alignment.Center:
                 img = ImageOps.expand(img, (288 - width // 2, 0, 288 - width // 2, 0))
                 width, height = img.size
