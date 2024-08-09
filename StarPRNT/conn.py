@@ -13,7 +13,7 @@ from struct import pack
 
 from PIL import Image, ImageOps
 from .asb import ASB, parse_asb
-from .enums import Alignment, PrintSpeed, Model, UTF8Font, PrintDensity
+from .enums import ImageAlignment, PrintSpeed, Model, UTF8Font, PrintDensity, ReducedH, ReducedV, Font
 
 
 class StarPRNT(ABC):
@@ -49,6 +49,17 @@ class StarPRNT(ABC):
 
     # 2.3.1 Font style and character set
 
+    async def set_font(self, font: Font):
+        command = b"\x1b\x1eF"
+        if font == Font.A:
+            command += b"\x00"
+        elif font == Font.B:
+            command += b"\x01"
+        elif font == Font.C:
+            command += b"\x02"
+        await self.write_raw(command)
+
+
     async def set_font_scale(self, width: int, height: int):
         if not 1 <= width <= 6 or not 1 <= height <= 6:
             raise ValueError("font scale out of range (1-6)")
@@ -60,6 +71,22 @@ class StarPRNT(ABC):
         # FIXME: support type 2, don't hardcode
         await self.write_raw(b"\x1bd2")
 
+    # 2.3.10 Reduced printing
+
+    async def set_reduced_printing(self, horizontal: ReducedH = ReducedH.Disabled, vertical: ReducedV = ReducedV.Disabled):
+        command = b"\x1b\x1dc"
+        if horizontal == ReducedH.Disabled:
+            command += b"\x00"
+        elif horizontal == ReducedH.Enabled:
+            command += b"\x01"
+        if vertical == ReducedV.Disabled:
+            command += b"\x00"
+        elif vertical == ReducedV.Half:
+            command += b"\x01"
+        elif vertical == ReducedV.ThreeQuarters:
+            command += b"\x02"
+        await self.write_raw(command)
+
     # 2.3.12 Dot image graphics
 
     async def raster_test(self):
@@ -70,7 +97,7 @@ class StarPRNT(ABC):
             else:
                 await self.write_raw(b"\xaa" * 72)
 
-    async def print_image(self, image: str | BytesIO, alignment: Alignment = Alignment.Center):
+    async def print_image(self, image: str | BytesIO, alignment: ImageAlignment = ImageAlignment.Center):
         with Image.open(image) as img:
             width, height = img.size
             if img.mode == "RGBA":
@@ -153,10 +180,10 @@ class StarPRNT(ABC):
                 padded.paste(img, (0, 0))
                 img = padded
                 width, height = img.size
-            if alignment == Alignment.Center:
+            if alignment == ImageAlignment.Center:
                 img = ImageOps.expand(img, (288 - width // 2, 0, 288 - width // 2, 0))
                 width, height = img.size
-            elif alignment == Alignment.Right:
+            elif alignment == ImageAlignment.Right:
                 img = ImageOps.expand(img, (0, 0, 576 - width, 0))
                 width, height = img.size
             data = img.tobytes()

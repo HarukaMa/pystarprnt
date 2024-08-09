@@ -22,7 +22,7 @@ class UTF8Font(Enum):
     TraditionalChinese = auto()
     Korean = auto()
 
-class Alignment(Enum):
+class ImageAlignment(Enum):
     Left = auto()
     Center = auto()
     Right = auto()
@@ -45,3 +45,17 @@ class PrintDensity(Enum):
     Medium = auto()
     High = auto()
     Special = auto()
+
+class ReducedH(Enum):
+    Disabled = auto()
+    Enabled = auto()
+
+class ReducedV(Enum):
+    Disabled = auto()
+    Half = auto()
+    ThreeQuarters = auto()
+
+class Font(Enum):
+    A = auto()
+    B = auto()
+    C = auto()
